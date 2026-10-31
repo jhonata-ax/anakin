@@ -1,0 +1,22 @@
+{
+  "manifestVersion": 1,
+  "id": "format_painter_br",
+  "name": "Format Painter BR",
+  "author": "Comunidade RemNote",
+  "repoUrl": "https://github.com/jhonata-ax/anakin",
+  "version": {
+    "major": 2,
+    "minor": 0,
+    "patch": 0
+  },
+  "theme": [],
+  "enableOnMobile": false,
+  "description": "Pincel com aplicação exclusiva à seleção e medição de elementos especiais pela API, cores personalizadas e barra móvel.",
+  "requestNative": false,
+  "requiredScopes": [
+    {
+      "type": "All",
+      "level": "ReadCreateModifyDelete"
+    }
+  ]
+}

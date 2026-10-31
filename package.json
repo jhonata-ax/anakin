@@ -1,0 +1,30 @@
+{
+  "name": "remnote-format-painter",
+  "private": true,
+  "version": "2.0.0",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development webpack serve --config webpack.config.cjs --port 8080 --host localhost",
+    "build": "npm run test && shx rm -rf dist PluginZip.zip && cross-env NODE_ENV=production webpack --config webpack.config.cjs && cd dist && bestzip ../PluginZip.zip ./*",
+    "validate": "remnote-plugin validate",
+    "test": "node --test tests/*.test.cjs"
+  },
+  "dependencies": {
+    "@remnote/plugin-sdk": "0.0.46",
+    "react": "17.0.2",
+    "react-dom": "17.0.2"
+  },
+  "devDependencies": {
+    "@types/react": "^17.0.80",
+    "@types/react-dom": "^17.0.25",
+    "bestzip": "^2.2.1",
+    "copy-webpack-plugin": "^12.0.2",
+    "cross-env": "^7.0.3",
+    "esbuild-loader": "^4.2.2",
+    "html-webpack-plugin": "^5.6.3",
+    "shx": "^0.3.4",
+    "typescript": "^5.3.3",
+    "webpack": "^5.97.1",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.2.0"
+  }
+}
