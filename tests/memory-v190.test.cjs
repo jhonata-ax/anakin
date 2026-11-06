@@ -67,3 +67,12 @@ test('setText do editor falha: cai para gravação pelo Rem',async()=>{
   await applyToActiveSelection(plugin,sel('lei',4,7),{b:true},undefined);
   assert.deepEqual(rem.text,['lei ',m('lei',{b:true})]);
 });
+test('memoria nao grava repetidamente uma selecao inalterada',async()=>{
+  let writes=0;const store={};let focused=['lei'];
+  const plugin={editor:{async getSelectedText(){return sel('lei',0,3);},async getFocusedEditorText(){return focused;}},
+    storage:{async setSession(k,v){writes++;store[k]=v;},async getSession(k){return store[k];}}};
+  await remember(plugin);
+  await remember(plugin);
+  await remember(plugin);
+  assert.ok(writes<=1,'A mesma selecao nao deve causar chamadas repetidas ao armazenamento');
+});

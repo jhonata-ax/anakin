@@ -109,11 +109,11 @@ export default function Bar({compact}:{compact:boolean}){
       const savedSelection=selected;
       const msg=await withTimeout(pasteFormat(plugin,savedSelection),10000,'TEMPO: a aplicação demorou demais. Confira o texto antes de repetir.');
       setNote(msg);
-      await plugin.app.toast('Pincel 2.0.0: '+msg);
+      try{await plugin.app.toast('Pincel 2.0.9: '+msg.slice(0,900));}catch(e){console.warn('[Format Painter] Notificação indisponível:',e);}
     }catch(error:any){
       const msg=error?.message||String(error);setNote('ERRO: '+msg);
-      await plugin.app.toast('Pincel 2.0.0: '+msg);
-      console.error('[Format Painter 2.0.0]',error);
+      try{await plugin.app.toast('Pincel 2.0.9: '+msg.slice(0,900));}catch(e){console.warn('[Format Painter] Notificação indisponível:',e);}
+      console.error('[Format Painter 2.0.9]',error);
     }finally {setBusy(false);}
   }
   async function runDiagnose(){

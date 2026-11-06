@@ -1,7 +1,10 @@
 import {declareIndexPlugin,WidgetLocation,AppEvents,type ReactRNPlugin} from '@remnote/plugin-sdk';
 import {copyFormat,pasteFormat,inspectColor,inspectSelection,diagnoseClick,openCurrentReviewCard,withToast,rememberSelection} from '../lib/core';
-import {showBar,hideBar,resetBar} from '../lib/toolbar';
+import {showBar,hideBar,resetBar,getBarState} from '../lib/toolbar';
 const ICON='https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f58c.png';
+const SELECTION_LISTENER_ID='fp-selection-memory';
+let memoryTimer: ReturnType<typeof setInterval>|undefined;
+let selectionListenerRegistered=false;
 async function onActivate(plugin:ReactRNPlugin){
   await plugin.app.registerCommand({
     id:'pincel-copiar-formatacao',name:'Pincel: copiar formatação',quickCode:'fpc',
@@ -54,13 +57,30 @@ async function onActivate(plugin:ReactRNPlugin){
     dimensions:{width:72,height:46}
   });
   // Memoriza a última seleção válida: o clique em Copiar/Aplicar tira o foco do editor.
-  try{plugin.event.addListener(AppEvents.EditorSelectionChanged,'fp-selection-memory',()=>{void rememberSelection(plugin);});}
-  catch(e){console.warn('[Format Painter] Evento de seleção indisponível:',e);}
-  try{setInterval(()=>{void rememberSelection(plugin);},600);}catch(_){}
-  try{await showBar(plugin);}catch(e){console.warn('[Format Painter] Barra não disponível:',e);}
-  console.info('[Format Painter 2.0.0] iniciado.');
+  try {
+    await plugin.event.addListener(AppEvents.EditorSelectionChanged, SELECTION_LISTENER_ID, () => { void rememberSelection(plugin); });
+    selectionListenerRegistered=true;
+  } catch(e) {
+    selectionListenerRegistered=false;
+    console.warn('[Format Painter] Evento de seleção indisponível:',e);
+  }
+  // Fallback leve para os clientes que não disparam o evento ao selecionar texto.
+  // A memória evita gravar seleções idênticas repetidamente.
+  if(memoryTimer)clearInterval(memoryTimer);
+  memoryTimer=setInterval(() => { void rememberSelection(plugin); }, 4000);
+  try {
+    const bar=await getBarState(plugin);
+    if(!bar.hidden)await showBar(plugin);
+  } catch(e) { console.warn('[Format Painter] Barra não disponível:',e); }
+  console.info('[Format Painter 2.0.9] iniciado.');
 }
 async function onDeactivate(plugin:ReactRNPlugin){
-  // A preferência de exibição permanece guardada; widget é encerrado pelo RemNote.
+  if(memoryTimer){ clearInterval(memoryTimer); memoryTimer=undefined; }
+  if(selectionListenerRegistered){
+    selectionListenerRegistered=false;
+    try { await plugin.event.removeListener(AppEvents.EditorSelectionChanged, SELECTION_LISTENER_ID); }
+    catch(e) { console.debug('[Format Painter] Listener já removido:',e); }
+  }
+  // Preserva a preferência de exibição e não grava dados ao desativar.
 }
 declareIndexPlugin(onActivate,onDeactivate);

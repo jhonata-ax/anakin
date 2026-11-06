@@ -63,14 +63,26 @@ export async function copyFormat(plugin: ReactRNPlugin, selectionSnapshot?: any)
   // Nunca ignorar uma cor não interpretada: isso apagaria a cor do destino.
   const unsupported=(selected.richText||[]).flatMap((part:any)=>extractColorStyle(part).unsupported);
   if(unsupported.length) throw Error(`COR PERSONALIZADA: formato ainda não suportado (${unsupported.map((x:any)=>x.key+':'+x.type).join(', ')}). Use fpd; nenhuma formatação foi copiada.`);
+  // O realce personalizado vem acompanhado de um `elementId`; ele precisa viajar junto para o RemNote reconhecer a cor.
+  if ((style as any).h !== undefined) {
+    const withH = (selected.richText || []).find((p: any) => p && typeof p === 'object' && p.h !== undefined && typeof p.elementId === 'string');
+    if (withH) (style as any).elementId = withH.elementId;
+  }
+  // `decorations` é um atributo novo do RemNote que acompanha cores/realces personalizados.
+  const withDec = (selected.richText || []).find((p: any) => p && typeof p === 'object' && p.decorations !== undefined);
+  if (withDec) (style as any).decorations = JSON.parse(JSON.stringify(withDec.decorations));
   await plugin.storage.setLocal(STORAGE_KEY, {v: 2, style});
   const diagnostics = colorDiagnostics(selected.richText, STYLE_KEYS);
   const detected = Object.keys(style).filter(k=>k==='tc'||k==='h');
   const rawShapes = colorShape(selected.richText);
   const color = detected.length ? ` Cor/realce copiado: ${detected.join(', ')}.` : rawShapes.length ? ` Cor reconhecida no texto, mas formato não suportado (${rawShapes.join(', ')}); estilos restantes copiados.` : ' Nenhum atributo de cor recebido pela API.';
+  // Atributos que a cópia não reconhece (podem ser como o RemNote guarda o realce personalizado).
+  const extraKeys = Array.from(new Set((selected.richText||[]).flatMap((p: any) => p && typeof p === 'object' ? Object.keys(p).filter(k => k !== 'text' && k !== 'i' && !STYLE_KEYS.includes(k) && !(k === 'elementId' && (style as any).elementId) && !(k === 'decorations' && (style as any).decorations !== undefined)) : [])));
+  const decNote = (style as any).decorations !== undefined ? ` decorations=${JSON.stringify((style as any).decorations).slice(0, 220)}.` : '';
+  const extra = decNote + (extraKeys.length ? ` Atributos não copiados: ${extraKeys.join(', ')}.` : '');
   const shown = selected.richText.map((p: any) => typeof p === 'string' ? p : p.text || '').join('');
   const preview = shown.length > 28 ? shown.slice(0,28) + '…' : shown;
-  return `Formato copiado de “${preview}” (${length} caracteres).${color}`;
+  return `Formato copiado de “${preview}” (${length} caracteres).${color}${extra}`;
 }
 export async function captureSelection(plugin: ReactRNPlugin): Promise<any> {
   return selectionOrThrow(plugin);
@@ -91,8 +103,14 @@ export async function pasteFormat(plugin: ReactRNPlugin, selectionSnapshot?:any)
   const result = await applyToActiveSelection(plugin, selected, saved.style, focusedSnapshot, hint);
   if (result.unchanged) return 'O trecho selecionado já tinha essa formatação.';
   const dropped = (result as any).dropped as string[] | undefined;
-  const warn = dropped?.length ? ` ATENÇÃO: o RemNote recusou ${dropped.map(k=>k==='h'?'o realce (h)':'a cor do texto (tc)').join(' e ')}; o restante foi aplicado.` : '';
-  return `Formatação aplicada exclusivamente ao trecho selecionado; ${result.length} caracteres preservados.${warn}`;
+  const form = (result as any).form as string|undefined, approx = (result as any).approx as string|undefined;
+  const formNote = approx ? ` ATENÇÃO: o RemNote não deixa plugins gravarem realce personalizado; foi aplicada a ${approx}.` : form && form !== 'original' ? ` (realce gravado como ${form})` : '';
+  const reasons = ((result as any).reasons as string[] | undefined)?.join(' | ');
+  const why = dropped?.length && reasons ? ` Motivo: ${reasons.slice(0, 700)}` : '';
+  const unverified = (result as any).verified === false ? ` ATENÇÃO: o RemNote aceitou a gravação, mas o realce personalizado NÃO ficou salvo (ele ignora esse formato). O restante foi aplicado. Motivo: ${(reasons || '').slice(0, 600)}` : '';
+  const readback = (result as any).readback ? ` [${(result as any).readback}]` : '';
+  const warn = dropped?.length ? ` ATENÇÃO: o RemNote recusou ${dropped.map(k=>k==='h'?'o realce (h)':k==='elementId'?'o identificador do realce personalizado':k==='decorations'?'os metadados de cor (decorations)':'a cor do texto (tc)').join(' e ')}; o restante foi aplicado.${why}` : '';
+  return `Formatação aplicada exclusivamente ao trecho selecionado; ${result.length} caracteres preservados.${formNote}${warn}${unverified}${readback}`;
 }
 /** Diagnosis does not include the actual selected words or edit any Rem. */
 export async function inspectSelection(plugin: ReactRNPlugin): Promise<string> {
@@ -128,8 +146,15 @@ export async function diagnoseClick(plugin: ReactRNPlugin): Promise<string> {
       out.push(`5 Rem: ${rem ? 'achado' : 'NÃO achado'}${rem ? `, frente ${f ? 'sim' : 'não'}, verso ${b ? 'sim' : 'não'}` : ''}`);
     } catch (e: any) { out.push('5 Rem: ERRO ' + String(e?.message || e).slice(0, 60)); }
   } else out.push('5 Rem: sem seleção para localizar');
+  const attrs = Array.from(new Set(((live?.richText || mem?.selection?.richText || []) as any[]).flatMap((p: any) => p && typeof p === 'object' ? Object.entries(p).filter(([k]) => k !== 'text' && k !== 'i').map(([k, v]) => k + ':' + (Array.isArray(v) ? 'array' : typeof v) + ((k === 'h' || k === 'tc') ? '(' + JSON.stringify(v).slice(0, 48) + ')' : (k === 'decorations') ? '(' + JSON.stringify(v).slice(0, 160) + ')' : (k === 'elementId' && typeof v === 'string') ? '(' + v.replace(/[a-z]/g,'a').replace(/[A-Z]/g,'A').replace(/[0-9]/g,'9').slice(0, 48) + ')' : '')) : [])));
+  out.push('6 atributos da seleção: ' + (attrs.join(',') || 'nenhum'));
+  try {
+    const src = ((live?.richText || mem?.selection?.richText) as any[]) || [];
+    const md = await plugin.richText.toMarkdown(src);
+    out.push('6b markdown: ' + String(md).replace(/[\p{L}\p{N}]/gu, 'x').slice(0, 120));
+  } catch (e: any) { out.push('6b markdown: ERRO ' + String(e?.message || e).slice(0, 50)); }
   const saved: any = await plugin.storage.getLocal(STORAGE_KEY);
-  out.push('6 formato copiado: ' + (saved?.v === 2 ? `SIM (${Object.keys(saved.style || {}).join(',') || 'nenhum estilo'})` : 'NÃO'));
+  out.push('7 formato copiado: ' + (saved?.v === 2 ? `SIM (${Object.keys(saved.style || {}).join(',') || 'nenhum estilo'})` : 'NÃO'));
   out.push(`(${Date.now() - t0} ms)`);
   return out.join(' | ');
 }
@@ -142,14 +167,19 @@ export async function inspectColor(plugin: ReactRNPlugin): Promise<string> {
   return `Campos de cor recebidos (tipo): ${colorShape(selected.richText).join(', ') || '(nenhum)'}. Valores de cor (sem mostrar texto): ${shape.join('; ') || '(nenhum)'}. Outros campos: ${diag.otherKeys.join(', ') || '(nenhum)'}.`;
 }
 export async function withToast(plugin: ReactRNPlugin, action: () => Promise<string>) {
+  // Falha ao mostrar uma notificação NÃO deve transformar um sucesso em erro.
+  const notify=async(message:string) => {
+    try { await plugin.app.toast('Pincel 2.0.9: ' + message.slice(0,900)); }
+    catch(e) { console.warn('[Format Painter] Notificação indisponível:',e); }
+  };
   try {
-    const message = await action();
-    await plugin.app.toast('Pincel 2.0.0: ' + message);
+    const message=await action();
+    await notify(message);
     return message;
   } catch (error: any) {
-    const message = error?.message || String(error);
-    console.error('[Format Painter 2.0.0] ' + message, error);
-    await plugin.app.toast('Pincel 2.0.0: ' + message);
-    return 'ERRO: ' + message;
+    const message=error?.message||String(error);
+    console.error('[Format Painter 2.0.9] '+message,error);
+    await notify(message);
+    return 'ERRO: '+message;
   }
 }
